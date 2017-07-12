@@ -1,0 +1,798 @@
+﻿
+
+( !!! NOTE !!! This document is just PLANNING. **NOTHING** is implemented yet! )
+( !!! NOTE !!! This document is just PLANNING. **NOTHING** is implemented yet! )
+( !!! NOTE !!! This document is just PLANNING. **NOTHING** is implemented yet! )
+( !!! NOTE !!! This document is just PLANNING. **NOTHING** is implemented yet! )
+( !!! NOTE !!! This document is just PLANNING. **NOTHING** is implemented yet! )
+( !!! NOTE !!! This document is just PLANNING. **NOTHING** is implemented yet! )
+( !!! NOTE !!! This document is just PLANNING. **NOTHING** is implemented yet! )
+( !!! NOTE !!! This document is just PLANNING. **NOTHING** is implemented yet! )
+
+
+Tile Engine Virtual Machine
+===========================
+
+Concepts
+--------
+
+Little Endian or Big Endian. Implementations can choose to support one or the
+other. Memory accesses and encoding will both respect the setting.
+
+Register-based, separated by scopes.
+Functions have local registers.
+
+System registers -- 2048 64-bit (16K) available to all scripts.
+Shared registers -- 1024 64-bit (8K) available to share in scripting group.
+Process registers -- 960 64-bit (7K) available per script instance.
+Local registers -- 64 64-bit (0.5K) available per function.
+-- Maximum of 32K in local registers (max. function depth of 64)
+-- Configurable in app
+
+All registers (a total of 4096) are addressable with 12-bits.
+
+Fixed-length instructions (32-bits per token).
+
+
+Instruction Encoding
+--------------------
+
+The first byte of each instruction indicates the opcode. All opcodes fit within
+six-bits.
+
+The leading two-bits indicate whether the corresponding source operand is a
+register (0) or a literal (1). If it is a literal then an extra 64-bits (two
+tokens) need to be skipped after the current instruction.
+
+The remaining six-bits represent the actual opcode.
+
+The rest of the token depends on the classification of the opcode.
+
+Binary operations are encoded with 12-bits representing the target register, and
+a pair of 6-bit values representing the left and right hand source local
+registers.
+
+	[EE|OOOOOO|DDDDDDDDDDDD|LLLLLL|RRRRRR]
+	- E = Early bits (the first two-bits)
+	- O = Opcode bits
+	- D = Destination (target) register bits
+	- L = Left-hand register bits
+	- R = Right-hand register bits
+
+Comparison operations are encoded with 12-bits representing the first register,
+and another 12-bits representing the second register.
+
+	[EE|OOOOOO|AAAAAAAAAAAA|BBBBBBBBBBBB]
+	- E = Early bits
+	- O = Opcode bits
+	- A = First register (A) bits
+	- B = Second register (B) bits
+
+Unary operators are encoded the same as comparison operators. The first register
+represents the target, and the second represents the source.
+
+	[EE|OOOOOO|DDDDDDDDDDDD|SSSSSSSSSSSS]
+	- E = Early bits
+	- O = Opcode bits
+	- D = Destination (target) register bits
+	- S = Source register bits
+
+Casting operators are encoded with 12-bits representing the target, 1-bit
+representing the signed-ness of the target, 1-bit representing the signed-ness
+of the source, 2-bits representing the target's size, 2-bits representing the
+source's size, and 6-bits representing the source local register.
+
+	- The signed-ness of a float is ignored.
+	- The two-bit size encoding represents (1<<size) bytes.
+	--- 0b00 = 1<<0 = 1 byte.
+	--- 0b01 = 1<<1 = 2 bytes.
+	--- 0b10 = 1<<2 = 4 bytes.
+	--- 0b11 = 1<<3 = 8 bytes.
+
+	- Casting operators using a literal for the target represent the target's
+	` unaligned memory address.
+	- If the target is larger than the source then this is an extension.
+	- If the target is smaller than the source then this is a truncation.
+	- If either the target or the source is signed then the extension is a sign
+	` extension. (Integer to integer casts only.)
+	--- If the target is a float then the the signed-ness of the extension
+	`   depends on whether the source is signed.
+
+	[EE|OOOOOO|DDDDDDDDDDDD|T|Z|LL|NN|SSSSSS]
+	- E = Early bits
+	- O = Opcode bits
+	- D = Destination (target) register bits
+	- T = Signed-ness-of-target bits
+	- Z = Signed-ness-of-source bits
+	- L = Length-of-target bits
+	- N = Length-of-source bits
+	- S = Local source register bits
+
+Memory operations are encoded with 6-bits representing the target or source
+local register, 2-bits representing the size of the operation as (1<<n) bytes,
+and 16-bits representing the memory encoding.
+
+-- If not using a literal then the memory encoding is as follows:
+---- First six-bits indicate the register to load the address from.
+---- Next 2-bits indicate the scaling factor for the offset (1<<scale).
+---- Next 8-bits indicate the offset to apply to the address.
+---- Thus: addressInBytes = regs[addressRegister] + offset*(1<<scaleFactor)
+-- If using a literal then the memory encoding is expected to be all zeroes.
+---- The memory encoding and literal might play together in other ways later, so
+`    the bits should be zeroed for future compatibility.
+-- A literal can also be used to reference the register. In which case only the
+`  lower 12-bits of the literal are used as the register.
+
+	[EE|OOOOOO|RRRRRR|NN|MMMMMMMMMMMMMMMM]
+	- E = Early bits
+	- O = Opcode bits
+	- R = Register bits
+	- N = Operation size bits
+	- M = Memory bits
+
+Label operations are encoded with 1-bit representing the "mode," and 23-bits
+encoded depending on the mode given. If the mode bit is 0 then the remaining
+23-bits represent the signed relative instruction pointer, divided by 4 (which
+enforces 4-byte alignment). Otherwise, the mode bit is 1, the following
+12-bits represent the register to source from, 2-bits indicate the scaling
+factor for the offset (1<<scale), and the last 9-bits indicate the offset to
+apply to the address.
+
+-- 32MB is addressable if not using a literal (and the mode is 0).
+-- If using a literal, then an unaligned address is used.
+
+	[EE|OOOOOO|S|MMMMMMMMMMMMMMMMMMMMMMM]
+	- E = Early bits
+	- O = Opcode bits
+	- S = Mode select bit
+	- M = Label address bits
+
+"Void" operations (operations that don't take parameters) are expected to encode
+their remaining bits with zeros.
+
+
+Operations
+----------
+
+2 memory operations.
+3 void operations.
+4 cast operations.
+4 unary operations.
+8 label operations.
+12 comparison operations.
+20 binary operations.
+(53 total)
+
+[Memory/Register]
+Load [memory]
+Store [memory]
+Mov [unary]
+
+[Casting]
+IToI [cast]
+IToF [cast]
+FToF [cast]
+FToI [cast]
+
+[Arithmetic]
+Add [binary]
+Sub [binary]
+MulS [binary]
+MulU [binary]
+DivS [binary]
+DivU [binary]
+RemS [binary]
+RemU [binary]
+FAdd [binary]
+FSub [binary]
+FMul [binary]
+FDiv [binary]
+FRem [binary]
+Not [unary]
+And [binary]
+Or [binary]
+Xor [binary]
+Shl [binary]
+Shr [binary]
+Sar [binary]
+Inc [unary]
+Dec [unary]
+
+[Control]
+CmpEq [comparison]
+CmpNe [comparison]
+CmpLt [comparison]
+CmpGt [comparison]
+CmpLe [comparison]
+CmpGe [comparison]
+FCmpEq [comparison]
+FCmpNe [comparison]
+FCmpLt [comparison]
+FCmpGt [comparison]
+FCmpLe [comparison]
+FCmpGe [comparison]
+Br [label]
+BrT [label]
+BrF [label]
+BrIndirect [label]
+Call [label]
+CallIndirect [label]
+SysCall [label]
+RTCall [label]
+Ret [void]
+Nop [void]
+
+[Concurrency]
+CmpXchg [binary]
+Fence [void]
+
+
+Calling a Function (Arguments/Returns)
+--------------------------------------
+
+The "Call" and "CallIndirect" operations will accept a second parameter, aside
+from the label. This is encoded by setting the second parameter's bit to a
+literal. This "argument count" literal is encoded as follows:
+
+- Bit 0: Argument count literal/register
+- Bit 1: Return count literal/register
+- Bit 2..7: Reserved. Set to zero.
+- Bit 8..19: Argument count. If bit 0 is clear then this is a literal. Otherwise
+`            bit 0 is set and this represents a register.
+- Bit 20..31: Return count. If bit 1 is clear then this is a literal. Otherwise
+`             bit 1 is set and this represents a register.
+- Bit 32..63: Reserved. Set to zero.
+
+The decoded argument count represents the number of local registers to mirror
+into the callee's local registers.
+
+The decoded return count represents the number of local registers to mirror into
+the caller's local registers (from the callee) upon the corresponding RET.
+
+Mirroring starts at local register zero and is limited to a maximum of 64 local
+registers (the full range).
+
+
+
+Tile Engine Scripting Language
+==============================
+
+Built-in Types
+--------------
+
+bool        // Boolean
+int         // 64-bit signed integer
+uint        // 64-bit unsigned integer
+float       // 64-bit float (double)
+string      // Mutable string object
+stringref   // Immutable string object reference
+object      // Generic object
+
+
+Collections
+-----------
+
+[]          // Dynamic array
+list(T)     // Linked list (holds type T)
+map(K,T)    // Binary tree (keys of type K, holds type T)
+
+
+Numeric Literals
+----------------
+
+Binary numbers are written as 0b<BinarySequence>.
+Octal numbers are written as 0c<OctalSequence>.
+Decimal numbers are written as <DecimalSequence>.
+Hexadecimal numbers are written as 0x<HexadecimalSequence>.
+
+Numbers can be given an arbitrary base (between 2 and 36). They are written as
+<Radix>r<Sequence>. 36 allows the use of all numbers and English letters. 2 is
+the same as binary; 8 the same as octal; 10 the same as decimal; 16 hexadecimal.
+
+Floats can omit either the leading sequence or the trailing sequence. If a
+sequence is omitted then zero is implied. Only the leading sequence can specify
+a radix.
+
+The exponent can be specified with 'e' or 'p' if either of those are valid given
+the radix for the float. ('e' won't be valid in hexadecimal. 'p' won't be valid
+in certain arbitrary radices.)
+
+The exponent marker can be immediately followed by an optional '+' or '-'. If
+omitted then '+' is implied.
+
+
+String Literals and Localization
+--------------------------------
+
+All strings are encoded in UTF-8.
+
+A string literal followed by ':' and a number will be given a localization ID.
+Depending on the settings of the script's interpreter, the text for the string
+may be replaced by a string in an external file based on the current language.
+
+e.g., "Hello":1000 could be replaced with "Bonjour," or "こんにちは," or some
+`     other text based on the current language.
+
+String literals are escaped by default. To disable escapes, prefix the string
+literal with '~'. Escaped string literals use the backslash ('\') to initiate an
+escape sequence. The following escape sequences exist:
+
+	\a          Alarm
+	\b          Backspace
+	\f          Form feed
+	\r          Carriage return
+	\t          Tab
+	\u<HHHH>    Insert Unicode code-point
+	\U<HHHHH>   Insert Unicode code-point
+	\v          Vertical tab
+	\x<HH>      Insert direct hexadecimal value (encoded as byte)
+	\<OOO>      Insert direct octal value (encoded as byte)
+	\\          Backslash
+	\'          Apostrophe
+	\"          Quotation mark
+	\?          Question mark
+	\#<H>       \xFF\xFF\x01\xF<H> (Select foreground color)
+	\$<H>       \xFF\xFF\x02\xF<H> (Select background color)
+	\^(<a>;<b>) \xFF\xFF\x03(<a>)\xFF\xFF\x04(<b>)\xFF\xFF\x05 (Ruby text)
+	\!<H>       \xFF\xFF\x06\xF<H> (Toggle effect)
+	\[<H>       \xFF\xFF\x07\xF<H> (Enable effect)
+	\]<H>       \xFF\xFF\x08\xF<H> (Disable effect)
+	\.<D>       \xFF\xFF\x09\xF<T> (Delay)
+
+<H+> means "hexadecimal"
+<O+> means "octal"
+<D+> means "decimal"
+<a> and <b> are used to imply a string of variable length.
+
+The use of \xFF\xFF in a string is used to imply a special interpretation of the
+string in whatever is reading it. The byte after that selects the operation.
+
+\x01 means "select foreground color." The byte following it is 0xF<H>. (e.g., if
+the color is "0" then the byte is 0xF0.) The <H> part represents the color.
+
+\x02 means "select background color." This is the same as \x01 in terms of
+encoding.
+
+\x03 means "start ruby text." The characters from here until \xFF\xFF\x04 are
+the "main text." (See the description of ruby text below.)
+
+\x04 means "ruby text separator." The characters from here until \xFF\xFF\x05
+are the "ruby text." (See the description of ruby text below.)
+
+\x05 means "end ruby text." This is used as a separator for ruby text.  (See the
+description of ruby text below.)
+
+\x06 means "toggle effect." The effect byte following (\xF<H>) represents the
+effect. If the effect is enabled then this disables it. Likewise, if the effect
+is disabled, then this enables it. This works on the current "enabled level" of
+the effect.
+
+\x07 means "begin effect." This increments the "enabled count" of an effect. The
+count maximum is 255.
+
+\x08 means "leave effect." This decrements the "enabled count" of an effect. The
+count minimum is 0.
+
+\x09 means "delay." This is used to imply that the system displaying the text
+should introduce a short delay before proceeding to the next character.
+
+(Color Palette)
+This is determined by the system interpreting the string. This will likely be
+sourced from some theme configuration file.
+
+(Ruby Text)
+In Japanese, Ruby text is used to clarify the pronunciation of a given kanji by
+displaying smaller hiragana (called furigana) above the kanji. This is
+especially the case for names which often need clarification.
+
+A simple example of ruby text syntax:
+
+	"In Japanese, \^(水;みず) means \"water.\""
+
+(Effect Index)
+The meaning of the effect depends entirely upon the system interpreting the
+string.
+
+(Delay Timing)
+The amount of time to be used for a delay depends on the system interpreting it.
+The larger the number, the longer the delay.
+
+
+Defining Variables / Fields
+---------------------------
+
+// Explicit type
+<typename> ( <varname> [ <typeattribs> ] [ = <expression> ] )+
+// Implicit type
+auto <varname> [ <typeattribs> ] = <expression>
+
+// Register-type specification
+register(<registertype>) <typename> ( varname> [ = <expression> ] )+
+
+// Register types:
+system // matches "System" register group (all scripts)
+shared // matches "Shared" register group (whole script group)
+global // matches "Process" register group (per script instance)
+local // matches "Local" register group (per function call)
+
+// Type attributes
+[] // dynamic array of unknown length
+[ <constant-integer-expression> ] // static array
+? // optional (similar to a pointer)
+
+
+User-Defined Types
+------------------
+
+struct <structName> {
+	<fields>
+}
+
+	struct EntStats {
+		uint health, maxHealth
+		float attackMultiplier
+	}
+
+
+Defining Functions
+------------------
+
+<qualifiers> functionName( parameters... ) -> returnValue {
+	<statements>
+}
+
+	getSum( int x, y ) -> int {
+		return x + y
+	}
+	
+	fib( int x ) {
+		return if x < 3 { 1 } else { fib( x - 1 ) + fib( x - 2 ) }
+	}
+
+// Qualifiers:
+override // this function overrides an interface function (e.g., onFixedStep)
+mutating // this function modifies state
+
+
+Control Flow
+------------
+
+// Statement form
+if <expr> {
+	<stmts>
+} else if <expr> {
+	<stmts>
+} else {
+	<stmts>
+}
+
+// Expression form
+if <expr> {
+	<expr>
+} else if <expr> {
+	<expr>
+} else {
+	<expr>
+}
+
+// Expression form (operator)
+<expr> ? <expr> : <expr>
+
+switch <expr> {
+	case <value>
+		<stmts>
+	case <value>
+		<stmts>
+	default
+		<stmts>
+}
+
+break
+continue
+
+
+Loops
+-----
+
+while <expr> {
+	<stmts>
+}
+
+	while !escape_key() {
+		main_loop()
+	}
+
+repeat {
+	<stmts>
+} until <expr>
+
+	repeat {
+		main_loop()
+	} until escape_key()
+
+loop {
+	<stmts>
+}
+
+	loop {
+		main_loop()
+		if escape_key() {
+			break
+		}
+	}
+
+for <stmt>, <expr>, <stmt> {
+}
+
+	for i = 0, i < n, ++i {
+	}
+
+// "For each <x> in <y>"
+for <varname> : <expr> {
+}
+
+	for item : items {
+	}
+
+
+Optionals
+---------
+
+// Can only access through a let conditional
+let <varname> = <optional>
+
+
+	// Example
+
+	struct Player {
+		string Name
+		uint Health, MaxHealth
+	}
+
+	list(Player) thePlayers;
+
+	FindPlayer( string Name ) -> Player? {
+		for player : thePlayers {
+			if player.name == Name {
+				return player
+			}
+		}
+
+		return null
+	}
+
+	RenamePlayer( string OldName, string NewName ) -> bool {
+		if let player = FindPlayer( OldName ) {
+			player.name = NewName
+			return true
+		}
+
+		return false
+	}
+
+
+Autoprint Statements
+--------------------
+
+@ "Speaker"
+"Normal text"		// 【Speaker】「Normal text」
+> "Quoted text"		// 【Speaker】『Quoted text』
+< "Thought text"	// 【Speaker】（Thought text）
+/ "Narrative text"	// Narrative text
+
+
+Error Handling
+--------------
+
+// Development-mode only check
+assert <expr> [ , <message> ]
+
+	e.g., assert divisor != 0, "Division by zero"
+
+// Verify some condition
+verify <expr> [ , <message> ]
+
+	e.g., if verify divisor != 0 { number /= divisor }
+
+
+Tile Scripting Standard Library (Core)
+======================================
+
+Basic Reporting
+---------------
+
+// Print text to the main window
+print( stringref text );
+
+// Generate an error
+error( stringref text );
+
+// Generate a warning
+warn( stringref text );
+
+
+Debugging
+---------
+
+// Unconditional breakpoint
+breakpoint();
+
+// Begin tracking the given variable (all loads/stores will be recorded --
+// potentially with call stack information)
+trackvar( object var, bool dotracking=true );
+
+// Output debug information to the debugger log/window
+debug( stringref text );
+
+
+String
+------
+
+// NOTE: "i" means "case insensitive"
+
+// The "find" functions return an index that is set to -1 if nothing was found.
+// If something was found then it the index is the base of the found string.
+//
+// The array versions of the find functions mean "find any." These versions take
+// an extra parameter, "srcindex," which is an optional. The optional will be
+// set if the item was found to whichever item in the src array was matched.
+
+// Find the first occurrence of 'src' in 'str'
+strfind( stringref str, stringref src ) -> int;
+strfindi( stringref str, stringref src ) -> int;
+strfind( stringref str, stringref src[], out int srcindex? = void ) -> int;
+strfindi( stringref str, stringref src[], out int srcindex? = void ) -> int;
+
+// Find the first occurrence of 'src' in 'str' AFTER the index specified
+strfindnext( stringref str, stringref src, int index ) -> int;
+strfindnexti( stringref str, stringref src, int index ) -> int;
+strfindnext( stringref str, stringref src[], int index, out int srcindex? = void ) -> int;
+strfindnexti( stringref str, stringref src[], int index, out int srcindex? = void ) -> int;
+
+// Find the last occurrence of 'src' in 'str'
+strfindlast( stringref str, stringref src ) -> int;
+strfindlasti( stringref str, stringref src ) -> int;
+strfindlast( stringref str, stringref src[], out int srcindex? = void ) -> int;
+strfindlasti( stringref str, stringref src[], out int srcindex? = void ) -> int;
+
+// Find the first occurrence of 'src' in 'str' before the index specified
+strfindprev( stringref str, stringref src, int index ) -> int;
+strfindprevi( stringref str, stringref src, int index ) -> int;
+strfindprev( stringref str, stringref src[], int index, out int srcindex? = void ) -> int;
+strfindprevi( stringref str, stringref src[], int index, out int srcindex? = void ) -> int;
+
+// Retrieve a substring from the given string
+strsub( stringref str, int first, int last ) -> stringref;
+
+// Split a string based on a delimiter
+strsplit( stringref str, stringref delim, bool keepEmpty=false ) -> stringref[];
+
+// Split a string based on a delimiter, respecting quotes
+strsplitq( stringref str, stringref delim, bool keepEmpty=false ) -> stringref[];
+
+// Merge a string array into a new string
+strmerge( stringref str[], stringref glue="" ) -> string;
+
+// Merge a string array into a new string, using quotes if delimiters are
+// present in any substring
+strmergeq( stringref str[], stringref glue="" ) -> string;
+
+// Check if a string begins with another string
+strbegins( stringref first, stringref second ) -> bool;
+strbeginsi( stringref first, stringref second ) -> bool;
+
+// Check if a string ends with another string
+strends( stringref first, stringref second ) -> bool;
+strendsi( stringref first, stringref second ) -> bool;
+
+// Check if a string contains another string
+strcontains( stringref first, stringref second ) -> bool;
+strcontainsi( stringref first, stringref second ) -> bool;
+
+// Add/remove quotes to a string
+quote( stringref src ) -> string;
+unquote( stringref src ) -> stringref;
+
+// Add/remove escapes to a string
+escape( stringref src ) -> string;
+unescape( stringref src ) -> string;
+
+// Half-width to full-width and the reverse
+hantozen( stringref src ) -> string;
+zentohan( stringref src ) -> string;
+
+
+Math
+----
+
+struct vec3 {
+	float x, y, z
+}
+struct color {
+	float r, g, b, a
+}
+
+struct mat3 {
+	float xx, yx, zx
+	float xy, yy, zy
+	float xz, yz, zz
+}
+struct mat4 {
+	float xx, yx, zx, wx
+	float xy, yy, zy, wy
+	float xz, yz, zz, wz
+	float xw, yw, zw, ww
+}
+
+degrees( float rads ) -> float;
+radians( float degs ) -> float;
+
+cos( float x ) -> float;
+sin( float x ) -> float;
+tan( float x ) -> float;
+
+acos( float x ) -> float;
+asin( float x ) -> float;
+atan( float x ) -> float;
+atan2( float y, float x ) -> float;
+
+sqrt( float x ) -> float;
+invsqrt( float x ) -> float;
+
+clamp( float x, float lo, float hi ) -> float;
+saturate( float x ) -> float;
+
+lerp( float a, float b, float t ) -> float;
+
+v3( float x, float y, float z ) -> vec3;
+v3() -> vec3;
+
+v3add( in vec3 P, in vec3 Q ) -> vec3;
+v3sub( in vec3 P, in vec3 Q ) -> vec3;
+v3mul( in vec3 P, in vec3 Q ) -> vec3;
+v3mul( in vec3 P, float Q ) -> vec3;
+
+m4v3column( in mat4 M, uint axis ) -> vec3;
+m4v3columnx( in mat4 M ) -> vec3;
+m4v3columny( in mat4 M ) -> vec3;
+m4v3columnz( in mat4 M ) -> vec3;
+
+m4identity( out mat4 M ) -> mat4;
+m4perspective( out mat4 M, float fovDeg, aspect, znear, zfar ) -> mat4;
+m4ortho( out mat4 M, float left, right, bottom, top, znear, zfar ) -> mat4;
+m4translation( out mat4 M, float x, y, z ) -> mat4;
+m4translation( out mat4 M, in vec3 Position ) -> mat4;
+m4rotation( out mat4 M, float x, y, z ) -> mat4;
+m4rotation( out mat4 M, in vec3 Angles ) -> mat4;
+m4scaling( out mat4 M, float x, y, z ) -> mat4;
+m4scaling( out mat4 M, in vec3 Scaling ) -> mat4;
+
+m4translate( inout mat4 M, float x, y, z ) -> mat4;
+m4translate( inout mat4 M, in vec3 Distance ) -> mat4;
+m4xrotate( inout mat4 M, float x ) -> mat4;
+m4yrotate( inout mat4 M, float y ) -> mat4;
+m4zrotate( inout mat4 M, float z ) -> mat4;
+m4rotate( inout mat4 M, float x, y, z ) -> mat4;
+m4rotate( inout mat4 M, in vec3 Angles ) -> mat4;
+m4scale( inout mat4 M, float AddSize ) -> mat4;
+m4scale( inout mat4 M, float x, y, z ) -> mat4;
+m4scale( inout mat4 M, in vec3 Axes ) -> mat4;
+
+m4affineinverse( out mat4 DstM, in mat4 SrcM ) -> mat4;
+m4affinemul( out mat4 M, in mat4 P, in mat4 Q ) -> mat4;
+m4mul3( out mat4 M, in mat4 P, in mat4 Q ) -> mat4;
+m4mul( out mat4 M, in mat4 P, in mat4 Q ) -> mat4;
+
+v3pointlocaltoglobal( out vec3 DstP, in mat4 ObjectXf, in vec3 SrcP ) -> vec3;
+v3pointglobaltolocal( out vec3 DstP, in mat4 ObjectXf, in vec3 SrcP ) -> vec3;
+v3vectorlocaltoglobal( out vec3 DstV, in mat4 ObjectXf, in vec3 SrcV ) -> vec3;
+v3vectorglobaltolocal( out vec3 DstV, in mat4 ObjectXf, in vec3 SrcV ) -> vec3;
+
+dot( in vec3 P, in vec3 Q ) -> float;
+cross( out vec3 OutV, in vec3 P, in vec3 Q ) -> vec3;
+
+m4det3( in mat4 M ) -> float;
+m4det( in mat4 M ) -> float;
+
+screentoproj( inout float x, inout float y, float w, h );
+

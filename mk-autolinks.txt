@@ -1,0 +1,18 @@
+
+# This is a comment
+
+// This is another comment
+
+	# This is also a comment
+// followed by another comment
+
+// Let's try IUP support
+//
+// The first 'iup' token is the name of the library
+// The "-liup" means "For all platforms use this linker flag"
+// The "apple:null" means "For Mac OS X, remove the linker flag (if set)"
+iup "-liup" apple:null {
+	// If this header is included by any project, on any platform, we'll link to IUP
+	// (Except Mac OS X)
+	"iup/iup.h"
+}
