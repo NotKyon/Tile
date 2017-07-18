@@ -9,7 +9,9 @@
 #include <tile/window.h>
 #include <tile/event.h>
 
+#if GLFW_ENABLED
 extern GLFWwindow *tl__g_window;
+#endif
 
 /*
  * ==========================================================================

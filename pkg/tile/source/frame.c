@@ -109,7 +109,7 @@ TlRenderPass *tlFG_NewRenderPass( TlFnExecRenderPass pfnExec, void *data ) {
 
 	TL_ASSERT_FG_INIT();
 
-	if( !( pass = tlFG_AllocRenderPass( TlFG_FrameGraph() ) ) ) {
+	if( !( pass = tlFG_AllocRenderPass( tlFG_FrameGraph() ) ) ) {
 		return ( TlRenderPass * )0;
 	}
 

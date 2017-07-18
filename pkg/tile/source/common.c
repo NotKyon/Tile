@@ -157,6 +157,8 @@ void *tlAllocZero(size_t n) {
 	return p;
 }
 void *tlAllocArray(size_t nmemb, size_t size) {
+	void *p;
+
 	if( nmemb*size < nmemb ) {
 		TL_BREAKPOINT();
 		tlErrorExit("Requested too much memory");
@@ -169,6 +171,8 @@ void *tlAllocArray(size_t nmemb, size_t size) {
 	return p;
 }
 void *tlAllocArrayZero(size_t nmemb, size_t size) {
+	void *p;
+
 	if( nmemb*size < nmemb ) {
 		TL_BREAKPOINT();
 		tlErrorExit("Requested too much memory");

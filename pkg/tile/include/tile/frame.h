@@ -73,9 +73,9 @@ typedef struct TlFG_TextureDesc_s {
 struct TlFrameGraph_s {
 	/* Flat array of render passes */
 	struct {
-		TlRenderPass_s *ptr;
-		size_t          num;
-		size_t          max;
+		struct TlRenderPass_s *ptr;
+		size_t                  num;
+		size_t                  max;
 	} renderPasses;
 
 	/* Compilation stack for culling unused resources */
