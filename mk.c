@@ -9010,9 +9010,9 @@ void mk_main_init(int argc, char **argv) {
 		{ "glu",
 		  { "-lglu32","-lGLU","-lGLU" } },
 		{ "glfw",
-		  { "-lglfw","-lglfw","-lglfw" } },
+		  { "-lglfw","-lglfw","-lglfw -framework OpenGL" } },
 		{ "glfw3",
-		  { "-lglfw3","-lglfw.so.3","-lglfw3" } },
+		  { "-lglfw3","-lglfw.so.3","-lglfw -framework OpenGL" } },
 		{ "glew",
 		  { "-lglew32","-lGLEW","-lGLEW" } },
 
@@ -9075,7 +9075,7 @@ void mk_main_init(int argc, char **argv) {
 
 		/* POSIX */
 		{ "realtime",
-		  { (const char *)0,"-lrt","-lrt" } },
+		  { (const char *)0,"-lrt",(const char *)0 } },
 		{ "math",
 		  { (const char *)0,"-lm","-lm" } },
 

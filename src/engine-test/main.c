@@ -1,5 +1,4 @@
 #include <tile.h>
-#include <GL/gl.h>
 
 /* provided by mk */
 #include <build-generated/gitinfo.h>
