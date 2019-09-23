@@ -27,12 +27,12 @@ extern unsigned char tl__g_devconFont[];
 
 #if SHADERS_ENABLED
 static const char *g_tileMap_vertSrc =
-	"#version 130\n"
+	"#version 120\n"
 	"\n"
 	"attribute vec3 vPosition;\n"
 	"attribute vec2 vTexCoord;\n"
 	"\n"
-	"out vec2 fTexCoord;\n"
+	"varying vec2 fTexCoord;\n"
 	"\n"
 	"uniform vec2 gTexOffset;\n"
 	"\n"
@@ -42,11 +42,11 @@ static const char *g_tileMap_vertSrc =
 	"	fTexCoord = vec2( vTexCoord.x + gTexOffset.x, 1.0 - ( vTexCoord.y + gTexOffset.y ) );\n"
 	"}\n";
 static const char *g_tileMap_fragSrc =
-	"#version 130\n"
+	"#version 120\n"
 	"\n"
-	"precision highp float;\n"
+	"//precision highp float;\n"
 	"\n"
-	"in vec2 fTexCoord;\n"
+	"varying vec2 fTexCoord;\n"
 	"\n"
 	"uniform sampler2D gTilesetTexture;\n"
 	"uniform sampler2D gTilemapTexture;\n"
@@ -299,7 +299,7 @@ void tlR_Frame(double deltaTime) {
 	if(deltaTime){/*unused*/}
 
 #if GLFW_ENABLED
-	glfwGetWindowSize( tl__g_window, &w, &h );
+	glfwGetFramebufferSize( tl__g_window, &w, &h );
 #elif defined( _WIN32 )
 	w = tlWin_ResX();
 	h = tlWin_ResY();
@@ -374,6 +374,7 @@ void tlR_Frame(double deltaTime) {
 	/* sync */
 #if GLFW_ENABLED
 	glfwSwapBuffers( tl__g_window );
+	glfwPollEvents();
 #elif defined( _WIN32 )
 	if( !tlWin_Loop() ) {
 		return;
