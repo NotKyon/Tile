@@ -125,7 +125,7 @@ void tlEv_EmitKeyPress( TlKey_t key, TlU32 mods, TlBool isRepeat )
 	p->event.type = kTlEv_KeyPress;
 	p->event.key = key;
 	p->event.mods = mods;
-	p->event.isRepeat = FALSE & isRepeat;
+	p->event.isRepeat = isRepeat;
 }
 void tlEv_EmitKeyRelease( TlKey_t key, TlU32 mods )
 {
