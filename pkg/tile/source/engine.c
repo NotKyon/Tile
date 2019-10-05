@@ -32,7 +32,7 @@ void tlFini(void)
 static void tlUpdateTiming(void)
 {
 	TlU64 currTime;
-	
+
 	currTime = tlSys_Microtime();
 	if( g_isTimingCurrent ) {
 		g_prevTime = g_currTime;
@@ -45,11 +45,36 @@ static void tlUpdateTiming(void)
 	g_deltaTime = ((double)(g_currTime - g_prevTime))/1000000.0;
 }
 
+static void tlMicroSleep( TlU64 microseconds )
+{
+#ifdef _WIN32
+	const TlU32 milliseconds = (TlU32)( ( microseconds + 500 )/1000 );
+	if( milliseconds > 0 ) {
+		Sleep( milliseconds );
+	}
+#else
+	struct timespec ts;
+	ts.tv_sec = microseconds/1000000;
+	ts.tv_nsec = ( microseconds%1000000 )*1000;
+	while( nanosleep( &ts, &ts ) == -1 && errno == EINTR ) {
+		((void)0);
+	}
+#endif
+}
+
 TlBool tlLoop(void)
 {
+	static const TlU64 timeBudgetMicrosec = 16666; /* FIXME: Make configurable */
+	TlU64 deltaMicrosec;
+
 	tlR_Frame( tlGetDeltaTime() );
 	if( !tlScr_IsOpen() ) {
 		return FALSE;
+	}
+
+	deltaMicrosec = tlSys_Microtime() - g_currTime;
+	if( deltaMicrosec < timeBudgetMicrosec ) {
+		tlMicroSleep( deltaMicrosec );
 	}
 
 	tlUpdateTiming();
