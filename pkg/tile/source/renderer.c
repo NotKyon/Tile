@@ -459,7 +459,7 @@ static void DrawTextOnly(const char *asciitext, TlS32 x, TlS32 y, TlU32 w, TlU32
 	}
 
 #if GLFW_ENABLED
-	glfwGetWindowSize( tl__g_window, &sw, &sh );
+	glfwGetFramebufferSize( tl__g_window, &sw, &sh );
 #elif defined( _WIN32 )
 	sw = tlWin_ResX();
 	sh = tlWin_ResY();
