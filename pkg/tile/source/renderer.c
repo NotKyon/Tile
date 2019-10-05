@@ -339,7 +339,7 @@ void tlR_Frame(double deltaTime) {
 	}
 
 	/* ### DEBUG DATA ### */
-	#if 0
+	#if 1
 	glViewport( 0, 0, w, h );
 	glDisable(GL_SCISSOR_TEST);
 	{
