@@ -56,8 +56,8 @@ static void glfw_getMouse( GLFWwindow *window, TlS32 *dstClientPosX, TlS32 *dstC
 
 	glfwGetCursorPos( window, &mousePosX, &mousePosY );
 
-	*dstClientPosX = (TlS32)( mousePosX );
-	*dstClientPosY = (TlS32)( mousePosY );
+	*dstClientPosX = (TlS32)floor( mousePosX );
+	*dstClientPosY = (TlS32)floor( mousePosY );
 }
 static TlMouse_t glfw_getMouseButton( int button )
 {
@@ -96,8 +96,8 @@ static void glfw_mouseButton_f( GLFWwindow *window, int inbutton, int action, in
 }
 static void glfw_mousePos_f( GLFWwindow *window, double x, double y )
 {
-	const TlS32 clientPosX = (TlS32)( x );
-	const TlS32 clientPosY = (TlS32)( y );
+	const TlS32 clientPosX = (TlS32)floor( x );
+	const TlS32 clientPosY = (TlS32)floor( y );
 
 	// FIXME: Use current mods
 	const TlU32 mods = 0;
