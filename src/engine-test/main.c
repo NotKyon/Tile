@@ -287,7 +287,7 @@ TlBool update(double deltaTime) {
 #endif
 
 #if 1
-	tlSetEntityPosition(g_shape, 0,0, 1 + (1 + tlSin(90.0f*time))/2*4);
+	tlSetEntityPosition(g_shape, 0,0, 1 + (1 + tlSin(90.0f*deltaTime))/2*4);
 #else
 	tlSetEntityPosition(g_shape, 0, 0, 1);
 #endif
@@ -343,11 +343,6 @@ TlBool update(double deltaTime) {
 #endif
 
 	return TRUE;
-}
-
-double getTime( void )
-{
-	return ( ( double )tlSys_Microtime() )/1000000.0;
 }
 
 int main() {
