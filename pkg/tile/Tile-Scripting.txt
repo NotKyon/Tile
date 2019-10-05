@@ -265,16 +265,27 @@ int         // 64-bit signed integer
 uint        // 64-bit unsigned integer
 float       // 64-bit float (double)
 string      // Mutable string object
-stringref   // Immutable string object reference
+substring   // Immutable string object reference
 object      // Generic object
 
 
 Collections
 -----------
 
-[]          // Dynamic array
-list(T)     // Linked list (holds type T)
-map(K,T)    // Binary tree (keys of type K, holds type T)
+[]T         // Array slice
+[N]T        // Static array, N-elements in length
+[dynamic]T  // Array object
+[K:T]       // Binary tree (keys of type K, holds type T)
+
+
+Type Modifiers
+--------------
+
+^           // Pointer
+?           // Optional
+
+Pointer and optional may be combined (^?) to mean "nullable pointer." Pointers
+are otherwise assumed to never be null.
 
 
 Numeric Literals
@@ -322,6 +333,7 @@ escape sequence. The following escape sequences exist:
 	\f          Form feed
 	\r          Carriage return
 	\t          Tab
+	\u{<H>*}    Insert Unicode code-point
 	\u<HHHH>    Insert Unicode code-point
 	\U<HHHHH>   Insert Unicode code-point
 	\v          Vertical tab
@@ -402,56 +414,55 @@ Defining Variables / Fields
 ---------------------------
 
 // Explicit type
-<typename> ( <varname> [ <typeattribs> ] [ = <expression> ] )+
+<varname> ':' <typeref> [ '=' <expression> ]
 // Implicit type
-auto <varname> [ <typeattribs> ] = <expression>
+<varname> ':=' <expression>
 
 // Register-type specification
-register(<registertype>) <typename> ( varname> [ = <expression> ] )+
+'@register' '(' <registertype> ')' <vardecl>
 
 // Register types:
-system // matches "System" register group (all scripts)
-shared // matches "Shared" register group (whole script group)
-global // matches "Process" register group (per script instance)
-local // matches "Local" register group (per function call)
-
-// Type attributes
-[] // dynamic array of unknown length
-[ <constant-integer-expression> ] // static array
-? // optional (similar to a pointer)
+'system' // matches "System" register group (all scripts)
+'shared' // matches "Shared" register group (whole script group)
+'global' // matches "Process" register group (per script instance)
+'local'  // matches "Local" register group (per function call)
 
 
 User-Defined Types
 ------------------
 
-struct <structName> {
+<structname> '::' 'struct' '{'
 	<fields>
-}
+'}'
 
-	struct EntStats {
-		uint health, maxHealth
-		float attackMultiplier
+	EntStats :: struct {
+		health, maxHealth: uint
+		attackMultiplier: float
 	}
 
 
 Defining Functions
 ------------------
 
-<qualifiers> functionName( parameters... ) -> returnValue {
-	<statements>
-}
+<functionname> '::' <fnquals> '(' <parameters...> ')' '->' <typeref> '{'
+	<statements...>
+'}'
 
-	getSum( int x, y ) -> int {
-		return x + y
+<functionname> '::' <fnquals> '(' <parameters...> ')' [ '->' <typeref> ] '=>' <expression>
+
+	fib :: ( x: int ) -> int {
+		if x < 3 {
+			return 1
+		} else {
+			return fib( x - 1 ) + fib( x - 2 )
+		}
 	}
-	
-	fib( int x ) {
-		return if x < 3 { 1 } else { fib( x - 1 ) + fib( x - 2 ) }
-	}
+
+	getSum :: ( x, y: int ) => x + y
 
 // Qualifiers:
-override // this function overrides an interface function (e.g., onFixedStep)
-mutating // this function modifies state
+'override' // this function overrides an interface function (e.g., onFixedStep)
+'mutating' // this function modifies state
 
 
 Control Flow
@@ -465,6 +476,8 @@ if <expr> {
 } else {
 	<stmts>
 }
+
+if <expr> do <stmt> else if <expr> do <stmt> else do <stmt>
 
 // Expression form
 if <expr> {
@@ -527,11 +540,24 @@ for <stmt>, <expr>, <stmt> {
 	for i = 0, i < n, ++i {
 	}
 
-// "For each <x> in <y>"
-for <varname> : <expr> {
+for <expr> {
 }
 
-	for item : items {
+	for [ 2, 4, 6, 8 ] {
+		// Loop implicitly defines '$it' and '$index'
+		//  - '$it' is the value of the item in the iteration
+		//  - '$index' is its index
+		print( "\($index + 1). \($it)" )
+	}
+
+// "For each <x> in <y>"
+for <varname> := <expr> {
+}
+
+	digitSuffixes :: [ "st", "nd", "rd", "th" ]
+	for item := items {
+		suffixIndex :: min( $index % 10, last_index(digitSuffixes) )
+		print( "The \($index)\(digitSuffixes[suffixIndex]) item is \(item)" )
 	}
 
 
@@ -544,16 +570,16 @@ let <varname> = <optional>
 
 	// Example
 
-	struct Player {
-		string Name
-		uint Health, MaxHealth
+	Player :: struct {
+		name: string
+		health, maxHealth: uint
 	}
 
-	list(Player) thePlayers;
+	thePlayers: [dynamic]Player
 
-	FindPlayer( string Name ) -> Player? {
-		for player : thePlayers {
-			if player.name == Name {
+	find_player :: ( name: string ) -> ?Player {
+		for player^ := thePlayers {
+			if player.name == name {
 				return player
 			}
 		}
@@ -561,9 +587,9 @@ let <varname> = <optional>
 		return null
 	}
 
-	RenamePlayer( string OldName, string NewName ) -> bool {
-		if let player = FindPlayer( OldName ) {
-			player.name = NewName
+	rename_player :: ( oldName, newName: string ) -> bool {
+		if let player := find_player( oldName ) {
+			player.name = newName
 			return true
 		}
 
@@ -574,11 +600,22 @@ let <varname> = <optional>
 Autoprint Statements
 --------------------
 
+A string literal on its own line is a statement which invokes the autoprint
+handler. There are several additional decorations that can be used to invoke
+special functionality.
+
+This system is primarily in place to aid in story-centric (RPG, VN) games.
+
 @ "Speaker"
 "Normal text"		// 【Speaker】「Normal text」
 > "Quoted text"		// 【Speaker】『Quoted text』
 < "Thought text"	// 【Speaker】（Thought text）
 / "Narrative text"	// Narrative text
+
+Localized strings can also be used. e.g.,
+
+	#en "Hello, world!"
+	#jp こんにちは、世界！
 
 
 Error Handling
@@ -602,27 +639,27 @@ Basic Reporting
 ---------------
 
 // Print text to the main window
-print( stringref text );
+print :: ( text: substring ) -> ()
 
 // Generate an error
-error( stringref text );
+error :: ( text: substring ) -> ()
 
 // Generate a warning
-warn( stringref text );
+warn :: ( text: substring ) -> ()
 
 
 Debugging
 ---------
 
 // Unconditional breakpoint
-breakpoint();
+breakpoint :: () -> ()
 
 // Begin tracking the given variable (all loads/stores will be recorded --
 // potentially with call stack information)
-trackvar( object var, bool dotracking=true );
+trackvar :: ( var: object, dotracking: bool = true ) -> ()
 
 // Output debug information to the debugger log/window
-debug( stringref text );
+debug :: ( text: substring ) -> ()
 
 
 String
@@ -631,87 +668,87 @@ String
 // NOTE: "i" means "case insensitive"
 
 // The "find" functions return an index that is set to -1 if nothing was found.
-// If something was found then it the index is the base of the found string.
+// If something was found then it returns the index to the base of the found
+// string.
 //
 // The array versions of the find functions mean "find any." These versions take
 // an extra parameter, "srcindex," which is an optional. The optional will be
 // set if the item was found to whichever item in the src array was matched.
 
 // Find the first occurrence of 'src' in 'str'
-strfind( stringref str, stringref src ) -> int;
-strfindi( stringref str, stringref src ) -> int;
-strfind( stringref str, stringref src[], out int srcindex? = void ) -> int;
-strfindi( stringref str, stringref src[], out int srcindex? = void ) -> int;
+strfind :: ( str, src: substring ) -> int
+strfindi :: ( str, src: substring ) -> int
+strfind :: ( str: substring, src: []substring, &srcindex: int? = null ) -> int
+strfindi :: ( str: substring, src: []substring, &srcindex: int? = null ) -> int
 
 // Find the first occurrence of 'src' in 'str' AFTER the index specified
-strfindnext( stringref str, stringref src, int index ) -> int;
-strfindnexti( stringref str, stringref src, int index ) -> int;
-strfindnext( stringref str, stringref src[], int index, out int srcindex? = void ) -> int;
-strfindnexti( stringref str, stringref src[], int index, out int srcindex? = void ) -> int;
+strfindnext :: ( str, src: substring, index: int ) -> int
+strfindnexti :: ( str, src: substring, index: int ) -> int
+strfindnext :: ( str: substring, src: []substring, &srcindex: int? = null ) -> int
+strfindnexti :: ( str: substring, src: []substring, &srcindex: int? = null ) -> int
 
 // Find the last occurrence of 'src' in 'str'
-strfindlast( stringref str, stringref src ) -> int;
-strfindlasti( stringref str, stringref src ) -> int;
-strfindlast( stringref str, stringref src[], out int srcindex? = void ) -> int;
-strfindlasti( stringref str, stringref src[], out int srcindex? = void ) -> int;
+strfindlast :: ( str, src: substring, index: int ) -> int
+strfindlasti :: ( str, src: substring, index: int ) -> int
+strfindlast :: ( str: substring, src: []substring, &srcindex: int? = null ) -> int
+strfindlasti :: ( str: substring, src: []substring, &srcindex: int? = null ) -> int
 
 // Find the first occurrence of 'src' in 'str' before the index specified
-strfindprev( stringref str, stringref src, int index ) -> int;
-strfindprevi( stringref str, stringref src, int index ) -> int;
-strfindprev( stringref str, stringref src[], int index, out int srcindex? = void ) -> int;
-strfindprevi( stringref str, stringref src[], int index, out int srcindex? = void ) -> int;
+strfindprev :: ( str, src: substring, index: int ) -> int
+strfindprevi :: ( str, src: substring, index: int ) -> int
+strfindprev :: ( str: substring, src: []substring, &srcindex: int? = null ) -> int
+strfindprevi :: ( str: substring, src: []substring, &srcindex: int? = null ) -> int
 
 // Retrieve a substring from the given string
-strsub( stringref str, int first, int last ) -> stringref;
+strsub :: ( str: substring, first, last: int ) -> substring
 
 // Split a string based on a delimiter
-strsplit( stringref str, stringref delim, bool keepEmpty=false ) -> stringref[];
+strsplit :: ( str, delim: substring, keepEmpty: bool = false ) -> []substring
 
 // Split a string based on a delimiter, respecting quotes
-strsplitq( stringref str, stringref delim, bool keepEmpty=false ) -> stringref[];
+strsplitq :: ( str, delim: substring, keepEmpty: bool = false ) -> []substring
 
 // Merge a string array into a new string
-strmerge( stringref str[], stringref glue="" ) -> string;
+strmerge :: ( str: []substring, glue: substring = "" ) -> string
 
-// Merge a string array into a new string, using quotes if delimiters are
-// present in any substring
-strmergeq( stringref str[], stringref glue="" ) -> string;
+// Merge a string array into a new string, using quotes for any item in which
+// glue is present
+strmergeq :: ( str: []substring, glue: substring = "" ) -> string
 
 // Check if a string begins with another string
-strbegins( stringref first, stringref second ) -> bool;
-strbeginsi( stringref first, stringref second ) -> bool;
+strbegins :: ( first, second: substring ) -> bool
+strbeginsi :: ( first, second: substring ) -> bool
 
 // Check if a string ends with another string
-strends( stringref first, stringref second ) -> bool;
-strendsi( stringref first, stringref second ) -> bool;
+strends :: ( first, second: substring ) -> bool
+strendsi :: ( first, second: substring ) -> bool
 
 // Check if a string contains another string
-strcontains( stringref first, stringref second ) -> bool;
-strcontainsi( stringref first, stringref second ) -> bool;
+strcontains :: ( first, second: substring ) -> bool
+strcontainsi :: ( first, second: substring ) -> bool
 
 // Add/remove quotes to a string
-quote( stringref src ) -> string;
-unquote( stringref src ) -> stringref;
+quote :: ( src: substring ) -> string
+unquote :: ( src: substring ) -> substring
 
 // Add/remove escapes to a string
-escape( stringref src ) -> string;
-unescape( stringref src ) -> string;
+escape :: ( src: substring ) -> string
+unescape :: ( src: substring ) -> string
 
 // Half-width to full-width and the reverse
-hantozen( stringref src ) -> string;
-zentohan( stringref src ) -> string;
+hantozen :: ( src: substring ) -> string
+zentohan :: ( src: substring ) -> string
 
 
 Math
 ----
 
-struct vec3 {
-	float x, y, z
-}
-struct color {
-	float r, g, b, a
-}
+vec3 :: [3]float
+vec4, color :: [4]float
+mat3 :: [3,3]float
+mat4 :: [4,4]float
 
+/*
 struct mat3 {
 	float xx, yx, zx
 	float xy, yy, zy
@@ -723,27 +760,30 @@ struct mat4 {
 	float xz, yz, zz, wz
 	float xw, yw, zw, ww
 }
+*/
 
-degrees( float rads ) -> float;
-radians( float degs ) -> float;
+degrees :: ( rads: float ) -> float
+radians :: ( degs: float ) -> float
 
-cos( float x ) -> float;
-sin( float x ) -> float;
-tan( float x ) -> float;
+cos :: ( x: float ) -> float
+sin :: ( x: float ) -> float
+tan :: ( x: float ) -> float
 
-acos( float x ) -> float;
-asin( float x ) -> float;
-atan( float x ) -> float;
-atan2( float y, float x ) -> float;
+acos :: ( x: float ) -> float
+asin :: ( x: float ) -> float
+atan :: ( x: float ) -> float
+atan2 :: ( y, x: float ) -> float
 
-sqrt( float x ) -> float;
-invsqrt( float x ) -> float;
+sqrt :: ( x: float ) -> float
+invsqrt :: ( x: float ) -> float
 
-clamp( float x, float lo, float hi ) -> float;
-saturate( float x ) -> float;
+clamp :: ( x, lo, hi: float ) -> float
+saturate :: ( x: float ) -> float
+saturate_signed :: ( x: float ) -> float
 
-lerp( float a, float b, float t ) -> float;
+lerp :: ( a, b, t: float ) -> float
 
+/*
 v3( float x, float y, float z ) -> vec3;
 v3() -> vec3;
 
@@ -795,4 +835,5 @@ m4det3( in mat4 M ) -> float;
 m4det( in mat4 M ) -> float;
 
 screentoproj( inout float x, inout float y, float w, h );
+*/
 
