@@ -25,9 +25,10 @@ After that, just run Mk.
 ```
 
 The output of the engine test will be `bin/mswin-x64/engine-test-dbg.exe` on
-Windows, or `bin/linux-x64/engine-test-dbg` on Linux. No other platform has been
-tested at this time. (Though I would like to make sure everything works on
-macOS, FreeBSD, (maybe NetBSD, Dragonfly, etc), and Haiku, eventually...)
+Windows, or `bin/linux-x64/engine-test-dbg` on Linux. Aside from macOS, no other
+platform has been tested at this time. (Though I would like to make sure
+everything works on FreeBSD, (maybe NetBSD, Dragonfly, etc), and Haiku,
+eventually...)
 
 ## How to use... ?
 
